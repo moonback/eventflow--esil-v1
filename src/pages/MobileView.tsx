@@ -21,7 +21,8 @@ export function MobileView() {
   const missionEquipments = useLiveQuery(() => db.missionEquipment.toArray()) || [];
   
   // Fake "assigned to me" view (s-3 Marc Vasseur)
-  const myMissions = missions.filter(m => m.staffIds.includes('s-3') || m.id === 'm-2');
+  // Show all missions in mobile view; adjust filter as needed for user-specific missions
+  const myMissions = missions;
 
   const handleIncidentSubmit = async () => {
     if (!incidentText.trim()) return;

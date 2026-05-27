@@ -25,10 +25,17 @@ export function Planning() {
     vehicleId: '',
     notes: ''
   });
+  const [selectedEquipment, setSelectedEquipment] = useState<Record<string, number>>({});
+  const [equipmentSearch, setEquipmentSearch] = useState('');
 
   const missions = useLiveQuery(() => db.missions.toArray()) || [];
   const vehicles = useLiveQuery(() => db.vehicles.toArray()) || [];
   const staff = useLiveQuery(() => db.staff.toArray()) || [];
+  const equipment = useLiveQuery(() => db.equipment.toArray()) || [];
+  const filteredEquipment = equipment.filter(eq =>
+    eq.name.toLowerCase().includes(equipmentSearch.toLowerCase()) ||
+    eq.qrCode.toLowerCase().includes(equipmentSearch.toLowerCase())
+  );
 
   const handleOpenPlan = () => {
     setEditingMissionId(null);
@@ -90,8 +97,15 @@ export function Planning() {
       await dbMutations.addMission(missionData);
     }
     
+    // Persist selected equipment for the mission
+      const entries = Object.entries(selectedEquipment) as [string, number][];
+      for (const [eqId, qty] of entries) {
+        await dbMutations.addMissionEquipment(missionId, eqId, qty);
+      }
+
     setIsPlanningMode(false);
     setEditingMissionId(null);
+    setSelectedEquipment({}); // reset selection
   };
 
   const days = Array.from({ length: 7 }, (_, i) => addDays(currentWeek, i));
@@ -223,7 +237,7 @@ export function Planning() {
               <h3 className="font-bold text-slate-800 flex items-center gap-2">
                 {editingMissionId ? 'Modifier la Mission' : 'Planifier une Mission'}
               </h3>
-              <button onClick={() => setIsPlanningMode(false)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => { setIsPlanningMode(false); setSelectedEquipment({}); }} className="text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -318,6 +332,52 @@ export function Planning() {
                     <option key={v.id} value={v.id}>{v.model} - {v.plate}</option>
                   ))}
                 </select>
+
+                <div className="mt-4">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Équipement à charger</label>
+                  <input
+                    type="text"
+                    placeholder="Rechercher matériel..."
+                    value={equipmentSearch}
+                    onChange={e => setEquipmentSearch(e.target.value)}
+                    className="w-full mb-2 px-2 py-1 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <div className="max-h-48 overflow-y-auto border border-slate-200 rounded-lg p-2 bg-slate-50/20">
+                    {filteredEquipment.map(eq => (
+                      <div key={eq.id} className="flex items-center gap-2 py-1">
+                        <input
+                          type="checkbox"
+                          checked={!!selectedEquipment[eq.id]}
+                          onChange={() => {
+                            setSelectedEquipment(prev => {
+                              const copy = { ...prev };
+                              if (copy[eq.id]) {
+                                delete copy[eq.id];
+                              } else {
+                                copy[eq.id] = 1; // default quantity
+                              }
+                              return copy;
+                            });
+                          }}
+                          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="flex-1 truncate">{eq.name} ({eq.qrCode})</span>
+                        {selectedEquipment[eq.id] && (
+                          <input
+                            type="number"
+                            min={1}
+                            value={selectedEquipment[eq.id]}
+                            onChange={e => {
+                              const qty = Math.max(1, Number(e.target.value));
+                              setSelectedEquipment(prev => ({ ...prev, [eq.id]: qty }));
+                            }}
+                            className="w-16 px-1 py-0.5 border rounded text-sm"
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               <div className="space-y-1.5">

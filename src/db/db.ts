@@ -154,6 +154,31 @@ export const dbMutations = {
     await db.missions.add(mission);
   },
   
+  // Add equipment items to a mission
+  addMissionEquipment: async (
+    missionId: string,
+    equipmentId: string,
+    plannedQuantity: number
+  ) => {
+    if (supabase) {
+      const { error } = await supabase.from('mission_equipment').insert({
+        mission_id: missionId,
+        equipment_id: equipmentId,
+        planned_quantity: plannedQuantity,
+        loaded_quantity: 0,
+        returned_quantity: 0,
+      });
+      if (error) console.error(error);
+    }
+    await db.missionEquipment.add({
+      missionId,
+      equipmentId,
+      plannedQuantity,
+      loadedQuantity: 0,
+      returnedQuantity: 0,
+    } as any);
+  },
+
   updateMission: async (mission: Mission) => {
     if (supabase) {
       const { error } = await supabase.from('missions').update({
