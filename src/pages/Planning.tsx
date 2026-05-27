@@ -98,6 +98,7 @@ export function Planning() {
     }
     
     // Persist selected equipment for the mission
+      const missionId = missionData.id;
       const entries = Object.entries(selectedEquipment) as [string, number][];
       for (const [eqId, qty] of entries) {
         await dbMutations.addMissionEquipment(missionId, eqId, qty);
