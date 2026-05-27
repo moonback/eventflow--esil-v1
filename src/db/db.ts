@@ -192,6 +192,25 @@ export const dbMutations = {
     await db.equipment.add(eq);
   },
 
+  updateEquipment: async (eq: Equipment) => {
+    if (supabase) {
+      const { error } = await supabase.from('equipment').update({
+        name: eq.name, brand: eq.brand, category: eq.category,
+        status: eq.status, weight_kg: eq.weightKg
+      }).eq('id', eq.id);
+      if (error) console.error(error);
+    }
+    await db.equipment.put(eq);
+  },
+
+  deleteEquipment: async (id: string) => {
+    if (supabase) {
+      const { error } = await supabase.from('equipment').delete().eq('id', id);
+      if (error) console.error(error);
+    }
+    await db.equipment.delete(id);
+  },
+
   updateEquipmentStatus: async (id: string, status: string, currentMissionId?: string) => {
     if (supabase) {
       await supabase.from('equipment').update({ status, current_mission_id: currentMissionId || null }).eq('id', id);

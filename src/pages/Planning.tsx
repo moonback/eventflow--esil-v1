@@ -3,7 +3,7 @@ import { db, dbMutations } from '../db/db';
 import { format, addDays, startOfWeek, isSameDay } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, Plus, MapPin, Truck, Users, X, Pencil, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, type MouseEvent } from 'react';
 import { cn } from '../lib/utils';
 import { MissionStatus } from '../types';
 import { useAuth } from '../contexts/AuthContext';
@@ -45,7 +45,7 @@ export function Planning() {
     setIsPlanningMode(true);
   };
 
-  const handleEditMission = (e: React.MouseEvent, mission: any) => {
+  const handleEditMission = (e: MouseEvent, mission: any) => {
     e.stopPropagation();
     setEditingMissionId(mission.id);
     setFormData({
@@ -61,7 +61,7 @@ export function Planning() {
     setIsPlanningMode(true);
   };
 
-  const handleDeleteMission = async (e: React.MouseEvent, id: string) => {
+  const handleDeleteMission = async (e: MouseEvent, id: string) => {
     e.stopPropagation();
     if (confirm('Voulez-vous vraiment supprimer cette mission ?')) {
       await dbMutations.deleteMission(id);
