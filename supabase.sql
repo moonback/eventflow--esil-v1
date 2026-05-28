@@ -139,3 +139,104 @@ CREATE POLICY "Users can update their own avatar." ON storage.objects FOR UPDATE
 DROP POLICY IF EXISTS "Users can delete their own avatar." ON storage.objects;
 CREATE POLICY "Users can delete their own avatar." ON storage.objects FOR DELETE USING (bucket_id = 'avatars' AND name like auth.uid()::text || '%');
 
+-- 9. Table des Clients (CRM)
+DROP TABLE IF EXISTS public.clients CASCADE;
+CREATE TABLE public.clients (
+  id text PRIMARY KEY,
+  name text NOT NULL,
+  email text,
+  phone text,
+  address text,
+  city text,
+  country text,
+  website text,
+  industry text,
+  status text NOT NULL DEFAULT 'prospect',
+  pipeline_stage text NOT NULL DEFAULT 'lead',
+  notes text,
+  created_at text NOT NULL,
+  updated_at text NOT NULL
+);
+ALTER TABLE public.clients ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Clients visibles pour tous" ON public.clients FOR SELECT USING (true);
+CREATE POLICY "Clients modifiables" ON public.clients FOR ALL USING (true);
+
+-- 10. Table des Contacts (CRM)
+DROP TABLE IF EXISTS public.contacts CASCADE;
+CREATE TABLE public.contacts (
+  id text PRIMARY KEY,
+  client_id text REFERENCES public.clients(id) ON DELETE CASCADE,
+  first_name text NOT NULL,
+  last_name text NOT NULL,
+  email text,
+  phone text,
+  role text,
+  is_primary boolean DEFAULT false,
+  created_at text NOT NULL
+);
+ALTER TABLE public.contacts ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Contacts visibles pour tous" ON public.contacts FOR SELECT USING (true);
+CREATE POLICY "Contacts modifiables" ON public.contacts FOR ALL USING (true);
+
+-- 11. Table des Notes Client (CRM)
+DROP TABLE IF EXISTS public.client_notes CASCADE;
+CREATE TABLE public.client_notes (
+  id text PRIMARY KEY,
+  client_id text REFERENCES public.clients(id) ON DELETE CASCADE,
+  content text NOT NULL,
+  author_id text,
+  created_at text NOT NULL
+);
+ALTER TABLE public.client_notes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Client Notes visibles pour tous" ON public.client_notes FOR SELECT USING (true);
+CREATE POLICY "Client Notes modifiables" ON public.client_notes FOR ALL USING (true);
+
+-- 12. Table des Rappels Client (CRM)
+DROP TABLE IF EXISTS public.client_reminders CASCADE;
+CREATE TABLE public.client_reminders (
+  id text PRIMARY KEY,
+  client_id text REFERENCES public.clients(id) ON DELETE CASCADE,
+  title text NOT NULL,
+  due_date text NOT NULL,
+  done boolean DEFAULT false,
+  created_at text NOT NULL
+);
+ALTER TABLE public.client_reminders ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Client Reminders visibles pour tous" ON public.client_reminders FOR SELECT USING (true);
+CREATE POLICY "Client Reminders modifiables" ON public.client_reminders FOR ALL USING (true);
+
+-- 13. Table des Documents Client (CRM)
+DROP TABLE IF EXISTS public.client_documents CASCADE;
+CREATE TABLE public.client_documents (
+  id text PRIMARY KEY,
+  client_id text REFERENCES public.clients(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  url text NOT NULL,
+  status text NOT NULL,
+  uploaded_at text NOT NULL
+);
+ALTER TABLE public.client_documents ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Client Documents visibles pour tous" ON public.client_documents FOR SELECT USING (true);
+CREATE POLICY "Client Documents modifiables" ON public.client_documents FOR ALL USING (true);
+
+-- 14. Table des Revenus Client (CRM)
+DROP TABLE IF EXISTS public.client_revenue CASCADE;
+CREATE TABLE public.client_revenue (
+  id text PRIMARY KEY,
+  client_id text REFERENCES public.clients(id) ON DELETE CASCADE,
+  mission_id text,
+  amount numeric NOT NULL,
+  description text,
+  date text NOT NULL
+);
+ALTER TABLE public.client_revenue ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Client Revenue visibles pour tous" ON public.client_revenue FOR SELECT USING (true);
+CREATE POLICY "Client Revenue modifiables" ON public.client_revenue FOR ALL USING (true);
+
+-- Ajout des publications pour le temps réel CRM
+ALTER PUBLICATION supabase_realtime ADD TABLE clients;
+ALTER PUBLICATION supabase_realtime ADD TABLE contacts;
+ALTER PUBLICATION supabase_realtime ADD TABLE client_notes;
+ALTER PUBLICATION supabase_realtime ADD TABLE client_reminders;
+ALTER PUBLICATION supabase_realtime ADD TABLE client_documents;
+ALTER PUBLICATION supabase_realtime ADD TABLE client_revenue;
