@@ -4,7 +4,7 @@ import { db, dbMutations } from '../db/db';
 import {
   Search, Filter, Plus, Package, X, ChevronRight,
   Wrench, AlertTriangle, Warehouse, Truck, Tag,
-  Weight, Hash, Clock, CheckCircle
+  Weight, Hash, Clock, CheckCircle, Euro
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import type { Equipment, EquipmentCategory, EquipmentStatus, MissionEquipment } from '../types';
@@ -70,6 +70,7 @@ function AddEquipmentModal({ onClose, equipmentCount, categoryCount }: AddModalP
   const [category, setCategory] = useState<EquipmentCategory>('audio');
   const [status, setStatus] = useState<EquipmentStatus>('warehouse');
   const [weightKg, setWeightKg] = useState('');
+  const [dailyRate, setDailyRate] = useState('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -89,6 +90,7 @@ function AddEquipmentModal({ onClose, equipmentCount, categoryCount }: AddModalP
         category,
         status,
         weightKg: weightKg ? parseFloat(weightKg) : undefined,
+        dailyRate: dailyRate ? parseFloat(dailyRate) : undefined,
       });
       onClose();
     } catch (err: any) {
@@ -172,8 +174,8 @@ function AddEquipmentModal({ onClose, equipmentCount, categoryCount }: AddModalP
             </div>
           </div>
 
-          {/* Statut initial + Poids */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* Statut initial + Poids + Tarif */}
+          <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Statut Initial</label>
               <select
@@ -187,8 +189,8 @@ function AddEquipmentModal({ onClose, equipmentCount, categoryCount }: AddModalP
               </select>
             </div>
             <div>
-              <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
-                Poids (kg) <span className="text-slate-400 normal-case font-normal">optionnel</span>
+              <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 truncate">
+                Poids (kg)
               </label>
               <input
                 id="eq-weight"
@@ -197,7 +199,22 @@ function AddEquipmentModal({ onClose, equipmentCount, categoryCount }: AddModalP
                 step="0.1"
                 value={weightKg}
                 onChange={(e) => setWeightKg(e.target.value)}
-                placeholder="ex: 45.5"
+                placeholder="Optionnel"
+                className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 truncate">
+                Tarif /j (€)
+              </label>
+              <input
+                id="eq-rate"
+                type="number"
+                min="0"
+                step="0.01"
+                value={dailyRate}
+                onChange={(e) => setDailyRate(e.target.value)}
+                placeholder="Optionnel"
                 className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
               />
             </div>
@@ -353,6 +370,15 @@ function EquipmentDrawer({ equipment, missions, missionEquipment, onClose, onSta
                   <div>
                     <p className="text-[10px] text-slate-400">Poids</p>
                     <p className="text-sm font-semibold text-slate-800">{equipment.weightKg} kg</p>
+                  </div>
+                </div>
+              )}
+              {equipment.dailyRate !== undefined && (
+                <div className="flex items-center gap-3">
+                  <Euro className="w-4 h-4 text-slate-400 shrink-0" />
+                  <div>
+                    <p className="text-[10px] text-slate-400">Tarif Journalier</p>
+                    <p className="text-sm font-semibold text-slate-800">{equipment.dailyRate.toFixed(2)} €</p>
                   </div>
                 </div>
               )}

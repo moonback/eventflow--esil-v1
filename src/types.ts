@@ -27,6 +27,7 @@ export interface Equipment {
   status: EquipmentStatus;
   currentMissionId?: string;
   weightKg?: number;
+  dailyRate?: number;
 }
 
 export interface MissionEquipment {

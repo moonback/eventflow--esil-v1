@@ -11,6 +11,7 @@ import { fr } from 'date-fns/locale';
 export function QuoteBuilder() {
   const navigate = useNavigate();
   const clients = useLiveQuery(() => db.clients.toArray()) || [];
+  const equipment = useLiveQuery(() => db.equipment.toArray()) || [];
   
   const [selectedClientId, setSelectedClientId] = useState('');
   const [items, setItems] = useState<Partial<QuoteItem>[]>([
@@ -36,6 +37,15 @@ export function QuoteBuilder() {
   const handleItemChange = (index: number, field: keyof QuoteItem, value: any) => {
     const newItems = [...items];
     newItems[index] = { ...newItems[index], [field]: value };
+    
+    // Auto-fill price if equipment is selected
+    if (field === 'description') {
+      const matchedEq = equipment.find(eq => eq.name === value);
+      if (matchedEq && matchedEq.dailyRate) {
+        newItems[index].unitPrice = matchedEq.dailyRate;
+      }
+    }
+    
     setItems(newItems);
   };
 
@@ -80,7 +90,7 @@ export function QuoteBuilder() {
       filename:     `Devis_${selectedClient.name.replace(/\\s+/g, '_')}_${format(new Date(), 'ddMMyyyy')}.pdf`,
       image:        { type: 'jpeg' as const, quality: 0.98 },
       html2canvas:  { scale: 2 },
-      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' as const }
     };
 
     html2pdf().set(opt).from(element).save();
@@ -160,6 +170,7 @@ export function QuoteBuilder() {
                   <div className="flex-1">
                     <input 
                       type="text" 
+                      list="equipment-list"
                       placeholder="Description de la prestation / matériel..."
                       value={item.description}
                       onChange={e => handleItemChange(idx, 'description', e.target.value)}
@@ -194,6 +205,12 @@ export function QuoteBuilder() {
               ))}
             </div>
             
+            <datalist id="equipment-list">
+              {equipment.map(eq => (
+                <option key={eq.id} value={eq.name} />
+              ))}
+            </datalist>
+
             <button 
               onClick={handleAddItem}
               className="flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-700 font-medium"

@@ -139,7 +139,8 @@ async function syncFromSupabase() {
         const mapped = equipment.map(e => ({
           id: e.id, qrCode: e.qr_code, name: e.name, brand: e.brand, 
           category: e.category, status: e.status, 
-          currentMissionId: e.current_mission_id, weightKg: e.weight_kg
+          currentMissionId: e.current_mission_id, weightKg: e.weight_kg,
+          dailyRate: e.daily_rate
         }));
         await db.equipment.clear();
         await db.equipment.bulkPut(mapped);
@@ -363,7 +364,8 @@ export const dbMutations = {
     if (supabase) {
       const { error } = await supabase.from('equipment').insert({
         id: eq.id, qr_code: eq.qrCode, name: eq.name, brand: eq.brand,
-        category: eq.category, status: eq.status, weight_kg: eq.weightKg
+        category: eq.category, status: eq.status, weight_kg: eq.weightKg,
+        daily_rate: eq.dailyRate
       });
       if (error) console.error(error);
     }
@@ -374,7 +376,7 @@ export const dbMutations = {
     if (supabase) {
       const { error } = await supabase.from('equipment').update({
         name: eq.name, brand: eq.brand, category: eq.category,
-        status: eq.status, weight_kg: eq.weightKg
+        status: eq.status, weight_kg: eq.weightKg, daily_rate: eq.dailyRate
       }).eq('id', eq.id);
       if (error) console.error(error);
     }

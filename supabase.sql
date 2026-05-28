@@ -69,6 +69,7 @@ CREATE TABLE public.equipment (
   status text NOT NULL,
   current_mission_id text,
   weight_kg numeric,
+  daily_rate numeric,
   created_at timestamp with time zone DEFAULT timezone('utc'::text, now())
 );
 ALTER TABLE public.equipment ENABLE ROW LEVEL SECURITY;
