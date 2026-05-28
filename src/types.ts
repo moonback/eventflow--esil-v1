@@ -141,3 +141,35 @@ export interface PipelineStage {
   color: string;
   order: number;
 }
+
+// ─── Quotes & Invoices ────────────────────────────────────────────────────────
+
+export type QuoteStatus = 'draft' | 'sent' | 'signed' | 'rejected' | 'invoiced';
+export type InvoiceStatus = 'pending' | 'paid';
+
+export interface Quote {
+  id: string;
+  clientId: string;
+  status: QuoteStatus;
+  totalAmount: number;
+  validityDate: string;
+  signatureData?: string;
+  createdAt: string;
+}
+
+export interface QuoteItem {
+  id: string;
+  quoteId: string;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+}
+
+export interface Invoice {
+  id: string;
+  quoteId: string;
+  missionId?: string;
+  amount: number;
+  status: InvoiceStatus;
+  createdAt: string;
+}

@@ -76,6 +76,7 @@ export function ClientProfilePanel({ client, onEdit }: ClientProfilePanelProps) 
   const allEquipment   = useLiveQuery(() => db.equipment.toArray()) || [];
   const allIncidents   = useLiveQuery(() => db.incidents.toArray()) || [];
   const allME          = useLiveQuery(() => db.missionEquipment.toArray()) || [];
+  const quotes         = useLiveQuery(() => db.quotes.where('clientId').equals(client.id).reverse().toArray(), [client.id]) || [];
 
   // Derived data
   const clientMissions = allMissions.filter(m => m.client === client.name);
@@ -158,12 +159,18 @@ export function ClientProfilePanel({ client, onEdit }: ClientProfilePanelProps) 
               </div>
             </div>
           </div>
-          {onEdit && (
-            <button onClick={onEdit}
-              className="shrink-0 px-4 py-2 bg-white/20 hover:bg-white/30 text-white text-sm font-medium rounded-xl backdrop-blur-sm border border-white/30 transition-all">
-              Modifier
+          <div className="flex flex-col gap-2 shrink-0">
+            {onEdit && (
+              <button onClick={onEdit}
+                className="px-4 py-2 bg-white/20 hover:bg-white/30 text-white text-sm font-medium rounded-xl backdrop-blur-sm border border-white/30 transition-all">
+                Modifier
+              </button>
+            )}
+            <button onClick={() => window.location.href = '/quotes/new'}
+              className="px-4 py-2 bg-white text-indigo-600 text-sm font-bold rounded-xl shadow-md transition-all hover:scale-105">
+              Nouveau Devis
             </button>
-          )}
+          </div>
         </div>
 
         {/* Revenue strip */}
@@ -376,6 +383,33 @@ export function ClientProfilePanel({ client, onEdit }: ClientProfilePanelProps) 
 
         {/* ─── Right column ─────────────────────────────────────────────── */}
         <div className="space-y-4">
+
+          {/* Quotes */}
+          <Card>
+            <SectionHeader icon={FileText} title={`Devis (${quotes.length})`} />
+            {quotes.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-3">Aucun devis</p>
+            ) : (
+              <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                {quotes.map(q => (
+                  <a key={q.id} href={`/quotes/${q.id}`} className="flex items-center justify-between p-3 rounded-xl border border-slate-100 hover:border-indigo-200 hover:bg-indigo-50 transition-all group">
+                    <div>
+                      <p className="font-semibold text-sm text-slate-800">Devis {q.id.split('-')[1]}</p>
+                      <p className="text-[11px] text-slate-500">{format(new Date(q.createdAt), 'dd MMM yyyy', { locale: fr })}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold text-sm text-indigo-600">{q.totalAmount.toFixed(2)} €</p>
+                      <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded uppercase mt-1 inline-block",
+                        q.status === 'signed' || q.status === 'invoiced' ? 'bg-emerald-100 text-emerald-700' :
+                        q.status === 'rejected' ? 'bg-red-100 text-red-700' :
+                        'bg-amber-100 text-amber-700'
+                      )}>{q.status}</span>
+                    </div>
+                  </a>
+                ))}
+              </div>
+            )}
+          </Card>
 
           {/* Revenue */}
           <Card>

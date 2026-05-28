@@ -240,3 +240,50 @@ ALTER PUBLICATION supabase_realtime ADD TABLE client_notes;
 ALTER PUBLICATION supabase_realtime ADD TABLE client_reminders;
 ALTER PUBLICATION supabase_realtime ADD TABLE client_documents;
 ALTER PUBLICATION supabase_realtime ADD TABLE client_revenue;
+
+-- 15. Table des Devis (Quotes)
+DROP TABLE IF EXISTS public.quotes CASCADE;
+CREATE TABLE public.quotes (
+  id text PRIMARY KEY,
+  client_id text REFERENCES public.clients(id) ON DELETE CASCADE,
+  status text NOT NULL DEFAULT 'draft',
+  total_amount numeric NOT NULL DEFAULT 0,
+  validity_date text NOT NULL,
+  signature_data text,
+  created_at text NOT NULL
+);
+ALTER TABLE public.quotes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Quotes visibles pour tous" ON public.quotes FOR SELECT USING (true);
+CREATE POLICY "Quotes modifiables" ON public.quotes FOR ALL USING (true);
+
+-- 16. Table des Lignes de Devis (Quote Items)
+DROP TABLE IF EXISTS public.quote_items CASCADE;
+CREATE TABLE public.quote_items (
+  id text PRIMARY KEY,
+  quote_id text REFERENCES public.quotes(id) ON DELETE CASCADE,
+  description text NOT NULL,
+  quantity numeric NOT NULL DEFAULT 1,
+  unit_price numeric NOT NULL DEFAULT 0
+);
+ALTER TABLE public.quote_items ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Quote Items visibles pour tous" ON public.quote_items FOR SELECT USING (true);
+CREATE POLICY "Quote Items modifiables" ON public.quote_items FOR ALL USING (true);
+
+-- 17. Table des Factures (Invoices)
+DROP TABLE IF EXISTS public.invoices CASCADE;
+CREATE TABLE public.invoices (
+  id text PRIMARY KEY,
+  quote_id text REFERENCES public.quotes(id) ON DELETE CASCADE,
+  mission_id text,
+  amount numeric NOT NULL,
+  status text NOT NULL DEFAULT 'pending',
+  created_at text NOT NULL
+);
+ALTER TABLE public.invoices ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Invoices visibles pour tous" ON public.invoices FOR SELECT USING (true);
+CREATE POLICY "Invoices modifiables" ON public.invoices FOR ALL USING (true);
+
+-- Ajout des publications pour le temps réel Devis & Factures
+ALTER PUBLICATION supabase_realtime ADD TABLE quotes;
+ALTER PUBLICATION supabase_realtime ADD TABLE quote_items;
+ALTER PUBLICATION supabase_realtime ADD TABLE invoices;

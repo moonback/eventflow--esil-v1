@@ -15,6 +15,8 @@ import { Vehicles } from './pages/Vehicles';
 import { Staff } from './pages/Staff';
 import { Clients } from './pages/Clients';
 import { ClientDetail } from './pages/ClientDetail';
+import { QuoteBuilder } from './pages/QuoteBuilder';
+import { QuoteView } from './pages/QuoteView';
 import { Auth } from './pages/Auth';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 
@@ -47,6 +49,8 @@ export default function App() {
             <Route path="staff" element={<Staff />} />
             <Route path="clients" element={<Clients />} />
             <Route path="clients/:clientId" element={<ClientDetail />} />
+            <Route path="quotes/new" element={<QuoteBuilder />} />
+            <Route path="quotes/:quoteId" element={<QuoteView />} />
             <Route path="settings" element={<Settings />} />
           </Route>
         </Routes>

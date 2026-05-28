@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import { Mission, Equipment, MissionEquipment, Vehicle, Staff, Incident, Client, Contact, ClientNote, ClientReminder, ClientDocument, ClientRevenue } from '../types';
+import { Mission, Equipment, MissionEquipment, Vehicle, Staff, Incident, Client, Contact, ClientNote, ClientReminder, ClientDocument, ClientRevenue, Quote, QuoteItem, Invoice } from '../types';
 import { supabase } from './supabase';
 
 export class EventFlowDB extends Dexie {
@@ -17,6 +17,11 @@ export class EventFlowDB extends Dexie {
   clientReminders!: Table<ClientReminder, string>;
   clientDocuments!: Table<ClientDocument, string>;
   clientRevenue!: Table<ClientRevenue, string>;
+
+  // Quote & Invoice tables
+  quotes!: Table<Quote, string>;
+  quoteItems!: Table<QuoteItem, string>;
+  invoices!: Table<Invoice, string>;
 
   constructor() {
     super('EventFlowDB');
@@ -42,6 +47,24 @@ export class EventFlowDB extends Dexie {
       clientReminders: 'id, clientId, dueDate, done',
       clientDocuments: 'id, clientId, status',
       clientRevenue: 'id, clientId, missionId, date',
+    });
+    // Version 3 adds the Quotes module
+    this.version(3).stores({
+      missions: 'id, status, startDate',
+      equipment: 'id, qrCode, category, status, currentMissionId',
+      missionEquipment: '[missionId+equipmentId], missionId, equipmentId',
+      vehicles: 'id, status',
+      staff: 'id, role',
+      incidents: 'id, missionId, status',
+      clients: 'id, status, pipelineStage, name',
+      contacts: 'id, clientId, isPrimary',
+      clientNotes: 'id, clientId, createdAt',
+      clientReminders: 'id, clientId, dueDate, done',
+      clientDocuments: 'id, clientId, status',
+      clientRevenue: 'id, clientId, missionId, date',
+      quotes: 'id, clientId, status',
+      quoteItems: 'id, quoteId',
+      invoices: 'id, quoteId, status'
     });
   }
 }
@@ -75,6 +98,9 @@ async function syncFromSupabase() {
       { data: clientReminders },
       { data: clientDocuments },
       { data: clientRevenue },
+      { data: quotes },
+      { data: quoteItems },
+      { data: invoices },
     ] = await Promise.all([
       supabase.from('missions').select('*'),
       supabase.from('equipment').select('*'),
@@ -88,11 +114,15 @@ async function syncFromSupabase() {
       supabase.from('client_reminders').select('*').then(res => res.error ? { data: null } : res),
       supabase.from('client_documents').select('*').then(res => res.error ? { data: null } : res),
       supabase.from('client_revenue').select('*').then(res => res.error ? { data: null } : res),
+      supabase.from('quotes').select('*').then(res => res.error ? { data: null } : res),
+      supabase.from('quote_items').select('*').then(res => res.error ? { data: null } : res),
+      supabase.from('invoices').select('*').then(res => res.error ? { data: null } : res),
     ]);
 
     await db.transaction('rw', [
       db.missions, db.equipment, db.missionEquipment, db.vehicles, db.staff, db.incidents,
       db.clients, db.contacts, db.clientNotes, db.clientReminders, db.clientDocuments, db.clientRevenue,
+      db.quotes, db.quoteItems, db.invoices
     ], async () => {
       
       if (missions) {
@@ -212,6 +242,33 @@ async function syncFromSupabase() {
         }));
         await db.clientRevenue.clear();
         await db.clientRevenue.bulkPut(mapped);
+      }
+
+      // ── Quotes sync ─────────────────────────────────────────────────────────
+      if (quotes) {
+        const mapped = quotes.map(q => ({
+          id: q.id, clientId: q.client_id, status: q.status,
+          totalAmount: q.total_amount, validityDate: q.validity_date,
+          signatureData: q.signature_data, createdAt: q.created_at
+        }));
+        await db.quotes.clear();
+        await db.quotes.bulkPut(mapped);
+      }
+      if (quoteItems) {
+        const mapped = quoteItems.map(qi => ({
+          id: qi.id, quoteId: qi.quote_id, description: qi.description,
+          quantity: qi.quantity, unitPrice: qi.unit_price
+        }));
+        await db.quoteItems.clear();
+        await db.quoteItems.bulkPut(mapped);
+      }
+      if (invoices) {
+        const mapped = invoices.map(i => ({
+          id: i.id, quoteId: i.quote_id, missionId: i.mission_id,
+          amount: i.amount, status: i.status, createdAt: i.created_at
+        }));
+        await db.invoices.clear();
+        await db.invoices.bulkPut(mapped);
       }
     });
 
@@ -493,5 +550,45 @@ export const dbMutations = {
       });
     }
     await db.clientRevenue.add(rev);
+  },
+
+  // ── Quotes & Invoices ────────────────────────────────────────────────────────
+
+  addQuote: async (quote: Quote) => {
+    if (supabase) {
+      await supabase.from('quotes').insert({
+        id: quote.id, client_id: quote.clientId, status: quote.status,
+        total_amount: quote.totalAmount, validity_date: quote.validityDate,
+        signature_data: quote.signatureData, created_at: quote.createdAt
+      });
+    }
+    await db.quotes.add(quote);
+  },
+  updateQuote: async (quote: Quote) => {
+    if (supabase) {
+      await supabase.from('quotes').update({
+        status: quote.status, total_amount: quote.totalAmount,
+        validity_date: quote.validityDate, signature_data: quote.signatureData
+      }).eq('id', quote.id);
+    }
+    await db.quotes.put(quote);
+  },
+  addQuoteItem: async (item: QuoteItem) => {
+    if (supabase) {
+      await supabase.from('quote_items').insert({
+        id: item.id, quote_id: item.quoteId, description: item.description,
+        quantity: item.quantity, unit_price: item.unitPrice
+      });
+    }
+    await db.quoteItems.add(item);
+  },
+  addInvoice: async (invoice: Invoice) => {
+    if (supabase) {
+      await supabase.from('invoices').insert({
+        id: invoice.id, quote_id: invoice.quoteId, mission_id: invoice.missionId,
+        amount: invoice.amount, status: invoice.status, created_at: invoice.createdAt
+      });
+    }
+    await db.invoices.add(invoice);
   },
 };
