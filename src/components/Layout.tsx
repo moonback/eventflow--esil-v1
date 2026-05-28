@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router';
-import { LayoutDashboard, Smartphone, Package, CalendarDays, Settings, Truck, Users } from 'lucide-react';
+import { LayoutDashboard, Smartphone, Package, CalendarDays, Settings, Truck, Users, Building2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -18,6 +18,7 @@ export function Layout() {
     { name: 'Véhicules', href: '/vehicles', icon: Truck },
     { name: 'Planning', href: '/planning', icon: CalendarDays },
     { name: 'Personnel', href: '/staff', icon: Users },
+    { name: 'CRM & Clients', href: '/clients', icon: Building2 },
     { name: 'Paramètres', href: '/settings', icon: Settings },
   ];
 

@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import { Mission, Equipment, MissionEquipment, Vehicle, Staff, Incident } from '../types';
+import { Mission, Equipment, MissionEquipment, Vehicle, Staff, Incident, Client, Contact, ClientNote, ClientReminder, ClientDocument, ClientRevenue } from '../types';
 import { supabase } from './supabase';
 
 export class EventFlowDB extends Dexie {
@@ -10,6 +10,14 @@ export class EventFlowDB extends Dexie {
   staff!: Table<Staff, string>;
   incidents!: Table<Incident, string>;
 
+  // CRM tables
+  clients!: Table<Client, string>;
+  contacts!: Table<Contact, string>;
+  clientNotes!: Table<ClientNote, string>;
+  clientReminders!: Table<ClientReminder, string>;
+  clientDocuments!: Table<ClientDocument, string>;
+  clientRevenue!: Table<ClientRevenue, string>;
+
   constructor() {
     super('EventFlowDB');
     this.version(1).stores({
@@ -18,7 +26,22 @@ export class EventFlowDB extends Dexie {
       missionEquipment: '[missionId+equipmentId], missionId, equipmentId',
       vehicles: 'id, status',
       staff: 'id, role',
-      incidents: 'id, missionId, status'
+      incidents: 'id, missionId, status',
+    });
+    // Version 2 adds the CRM module
+    this.version(2).stores({
+      missions: 'id, status, startDate',
+      equipment: 'id, qrCode, category, status, currentMissionId',
+      missionEquipment: '[missionId+equipmentId], missionId, equipmentId',
+      vehicles: 'id, status',
+      staff: 'id, role',
+      incidents: 'id, missionId, status',
+      clients: 'id, status, pipelineStage, name',
+      contacts: 'id, clientId, isPrimary',
+      clientNotes: 'id, clientId, createdAt',
+      clientReminders: 'id, clientId, dueDate, done',
+      clientDocuments: 'id, clientId, status',
+      clientRevenue: 'id, clientId, missionId, date',
     });
   }
 }
@@ -45,17 +68,32 @@ async function syncFromSupabase() {
       { data: missionEquipment },
       { data: vehicles },
       { data: profiles },
-      { data: incidents }
+      { data: incidents },
+      { data: clients },
+      { data: contacts },
+      { data: clientNotes },
+      { data: clientReminders },
+      { data: clientDocuments },
+      { data: clientRevenue },
     ] = await Promise.all([
       supabase.from('missions').select('*'),
       supabase.from('equipment').select('*'),
       supabase.from('mission_equipment').select('*'),
       supabase.from('vehicles').select('*'),
       supabase.from('profiles').select('*'),
-      supabase.from('incidents').select('*')
+      supabase.from('incidents').select('*'),
+      supabase.from('clients').select('*').then(res => res.error ? { data: null } : res),
+      supabase.from('contacts').select('*').then(res => res.error ? { data: null } : res),
+      supabase.from('client_notes').select('*').then(res => res.error ? { data: null } : res),
+      supabase.from('client_reminders').select('*').then(res => res.error ? { data: null } : res),
+      supabase.from('client_documents').select('*').then(res => res.error ? { data: null } : res),
+      supabase.from('client_revenue').select('*').then(res => res.error ? { data: null } : res),
     ]);
 
-    await db.transaction('rw', [db.missions, db.equipment, db.missionEquipment, db.vehicles, db.staff, db.incidents], async () => {
+    await db.transaction('rw', [
+      db.missions, db.equipment, db.missionEquipment, db.vehicles, db.staff, db.incidents,
+      db.clients, db.contacts, db.clientNotes, db.clientReminders, db.clientDocuments, db.clientRevenue,
+    ], async () => {
       
       if (missions) {
         const mapped = missions.map(m => ({
@@ -116,6 +154,65 @@ async function syncFromSupabase() {
         await db.incidents.clear();
         await db.incidents.bulkPut(mapped);
       }
+
+      // ── CRM sync ──────────────────────────────────────────────────────────
+      if (clients) {
+        const mapped = clients.map(c => ({
+          id: c.id, name: c.name, email: c.email, phone: c.phone,
+          address: c.address, city: c.city, country: c.country,
+          website: c.website, industry: c.industry, status: c.status,
+          pipelineStage: c.pipeline_stage, notes: c.notes,
+          createdAt: c.created_at, updatedAt: c.updated_at,
+        }));
+        await db.clients.clear();
+        await db.clients.bulkPut(mapped);
+      }
+
+      if (contacts) {
+        const mapped = contacts.map(c => ({
+          id: c.id, clientId: c.client_id, firstName: c.first_name,
+          lastName: c.last_name, email: c.email, phone: c.phone,
+          role: c.role, isPrimary: c.is_primary, createdAt: c.created_at,
+        }));
+        await db.contacts.clear();
+        await db.contacts.bulkPut(mapped);
+      }
+
+      if (clientNotes) {
+        const mapped = clientNotes.map(n => ({
+          id: n.id, clientId: n.client_id, content: n.content,
+          authorId: n.author_id, createdAt: n.created_at,
+        }));
+        await db.clientNotes.clear();
+        await db.clientNotes.bulkPut(mapped);
+      }
+
+      if (clientReminders) {
+        const mapped = clientReminders.map(r => ({
+          id: r.id, clientId: r.client_id, title: r.title,
+          dueDate: r.due_date, done: r.done, createdAt: r.created_at,
+        }));
+        await db.clientReminders.clear();
+        await db.clientReminders.bulkPut(mapped);
+      }
+
+      if (clientDocuments) {
+        const mapped = clientDocuments.map(d => ({
+          id: d.id, clientId: d.client_id, name: d.name,
+          url: d.url, status: d.status, uploadedAt: d.uploaded_at,
+        }));
+        await db.clientDocuments.clear();
+        await db.clientDocuments.bulkPut(mapped);
+      }
+
+      if (clientRevenue) {
+        const mapped = clientRevenue.map(r => ({
+          id: r.id, clientId: r.client_id, missionId: r.mission_id,
+          amount: r.amount, description: r.description, date: r.date,
+        }));
+        await db.clientRevenue.clear();
+        await db.clientRevenue.bulkPut(mapped);
+      }
     });
 
     console.log("Synchronisation de Supabase vers Dexie terminée.");
@@ -127,13 +224,12 @@ async function syncFromSupabase() {
 function setupRealtimeSubscriptions() {
   if (!supabase) return;
 
-  const channel = supabase.channel('schema-db-changes')
+  supabase.channel('schema-db-changes')
     .on(
       'postgres_changes',
       { event: '*', schema: 'public' },
       () => {
         // Simple strategy: re-fetch everything on change for this demo
-        // For production, handle ADD/UPDATE/DELETE events specifically
         syncFromSupabase();
       }
     )
@@ -295,5 +391,107 @@ export const dbMutations = {
     await db.missionEquipment.where({ missionId, equipmentId }).modify(me => {
       Object.assign(me, updates);
     });
-  }
+  },
+
+  // ── CRM Mutations ──────────────────────────────────────────────────────────
+
+  addClient: async (client: Client) => {
+    if (supabase) {
+      await supabase.from('clients').insert({
+        id: client.id, name: client.name, email: client.email, phone: client.phone,
+        address: client.address, city: client.city, country: client.country,
+        website: client.website, industry: client.industry, status: client.status,
+        pipeline_stage: client.pipelineStage, notes: client.notes,
+        created_at: client.createdAt, updated_at: client.updatedAt,
+      });
+    }
+    await db.clients.add(client);
+  },
+
+  updateClient: async (client: Client) => {
+    const updated = { ...client, updatedAt: new Date().toISOString() };
+    if (supabase) {
+      await supabase.from('clients').update({
+        name: updated.name, email: updated.email, phone: updated.phone,
+        address: updated.address, city: updated.city, country: updated.country,
+        website: updated.website, industry: updated.industry, status: updated.status,
+        pipeline_stage: updated.pipelineStage, notes: updated.notes,
+        updated_at: updated.updatedAt,
+      }).eq('id', updated.id);
+    }
+    await db.clients.put(updated);
+  },
+
+  deleteClient: async (id: string) => {
+    if (supabase) {
+      await supabase.from('clients').delete().eq('id', id);
+    }
+    await db.clients.delete(id);
+  },
+
+  addContact: async (contact: Contact) => {
+    if (supabase) {
+      await supabase.from('contacts').insert({
+        id: contact.id, client_id: contact.clientId, first_name: contact.firstName,
+        last_name: contact.lastName, email: contact.email, phone: contact.phone,
+        role: contact.role, is_primary: contact.isPrimary, created_at: contact.createdAt,
+      });
+    }
+    await db.contacts.add(contact);
+  },
+
+  deleteContact: async (id: string) => {
+    if (supabase) await supabase.from('contacts').delete().eq('id', id);
+    await db.contacts.delete(id);
+  },
+
+  addClientNote: async (note: ClientNote) => {
+    if (supabase) {
+      await supabase.from('client_notes').insert({
+        id: note.id, client_id: note.clientId, content: note.content,
+        author_id: note.authorId, created_at: note.createdAt,
+      });
+    }
+    await db.clientNotes.add(note);
+  },
+
+  deleteClientNote: async (id: string) => {
+    if (supabase) await supabase.from('client_notes').delete().eq('id', id);
+    await db.clientNotes.delete(id);
+  },
+
+  addClientReminder: async (reminder: ClientReminder) => {
+    if (supabase) {
+      await supabase.from('client_reminders').insert({
+        id: reminder.id, client_id: reminder.clientId, title: reminder.title,
+        due_date: reminder.dueDate, done: reminder.done, created_at: reminder.createdAt,
+      });
+    }
+    await db.clientReminders.add(reminder);
+  },
+
+  toggleClientReminder: async (id: string, done: boolean) => {
+    if (supabase) await supabase.from('client_reminders').update({ done }).eq('id', id);
+    await db.clientReminders.update(id, { done });
+  },
+
+  addClientDocument: async (doc: ClientDocument) => {
+    if (supabase) {
+      await supabase.from('client_documents').insert({
+        id: doc.id, client_id: doc.clientId, name: doc.name,
+        url: doc.url, status: doc.status, uploaded_at: doc.uploadedAt,
+      });
+    }
+    await db.clientDocuments.add(doc);
+  },
+
+  addClientRevenue: async (rev: ClientRevenue) => {
+    if (supabase) {
+      await supabase.from('client_revenue').insert({
+        id: rev.id, client_id: rev.clientId, mission_id: rev.missionId,
+        amount: rev.amount, description: rev.description, date: rev.date,
+      });
+    }
+    await db.clientRevenue.add(rev);
+  },
 };

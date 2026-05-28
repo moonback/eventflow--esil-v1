@@ -13,6 +13,8 @@ import { Planning } from './pages/Planning';
 import { Settings } from './pages/Settings';
 import { Vehicles } from './pages/Vehicles';
 import { Staff } from './pages/Staff';
+import { Clients } from './pages/Clients';
+import { ClientDetail } from './pages/ClientDetail';
 import { Auth } from './pages/Auth';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 
@@ -43,6 +45,8 @@ export default function App() {
             <Route path="vehicles" element={<Vehicles />} />
             <Route path="planning" element={<Planning />} />
             <Route path="staff" element={<Staff />} />
+            <Route path="clients" element={<Clients />} />
+            <Route path="clients/:clientId" element={<ClientDetail />} />
             <Route path="settings" element={<Settings />} />
           </Route>
         </Routes>

@@ -32,6 +32,7 @@ export function Planning() {
   const vehicles = useLiveQuery(() => db.vehicles.toArray()) || [];
   const staff = useLiveQuery(() => db.staff.toArray()) || [];
   const equipment = useLiveQuery(() => db.equipment.toArray()) || [];
+  const clients = useLiveQuery(() => db.clients.toArray()) || [];
   const filteredEquipment = equipment.filter(eq =>
     eq.name.toLowerCase().includes(equipmentSearch.toLowerCase()) ||
     eq.qrCode.toLowerCase().includes(equipmentSearch.toLowerCase())
@@ -257,13 +258,16 @@ export function Planning() {
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Client</label>
-                  <input 
-                    type="text" 
+                  <select 
                     value={formData.client}
                     onChange={(e) => setFormData({...formData, client: e.target.value})}
-                    placeholder="Nom du client"
                     className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                  />
+                  >
+                    <option value="">Sélectionner un client...</option>
+                    {clients.map(c => (
+                      <option key={c.id} value={c.name}>{c.name}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
