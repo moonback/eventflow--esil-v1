@@ -6,6 +6,7 @@ import { cn } from '../lib/utils';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Mission, Equipment, MissionEquipment } from '../types';
+import { Scanner, IDetectedBarcode } from '@yudiel/react-qr-scanner';
 
 export function MobileView() {
   const [offlineMode] = useState(true); // Simulated lack of connection for demo
@@ -50,30 +51,96 @@ export function MobileView() {
     returning: { label: 'Retour', color: 'bg-indigo-100 text-indigo-700' }
   };
 
-  const handleScanSimulation = async (isSuccess: boolean) => {
-    if (!activeMission) return;
-    
-    // Pick an equipment associated with this mission that hasn't been loaded yet
-    const missionQs = missionEquipments.filter(me => me.missionId === activeMission.id && me.loadedQuantity < me.plannedQuantity);
-    
-    if (missionQs.length === 0) {
-      setScanError("Tout le matériel a déjà été chargé !");
+  const handleRealScan = async (scannedCode: string) => {
+    if (!activeMission) {
+      const eq = equipment.find(e => e.qrCode === scannedCode);
+      if (eq) {
+        setScanResult(`Scanné: ${eq.name} (${eq.qrCode})`);
+      } else {
+        setScanError(`Code inconnu: ${scannedCode}`);
+      }
+      setTimeout(() => {
+        setScanResult(null);
+        setScanError(null);
+      }, 3000);
+      return;
+    }
+
+    const eqToLoad = equipment.find(e => e.qrCode === scannedCode);
+    if (!eqToLoad) {
+      setScanError(`Matériel inconnu: ${scannedCode}`);
       setTimeout(() => setScanError(null), 2000);
       return;
     }
 
-    const eqToLoad = equipment.find(e => e.id === missionQs[0].equipmentId);
-    
-    if (eqToLoad) {
-      setScanResult(`Scanné: ${eqToLoad.name} (${eqToLoad.qrCode})`);
+    const isReturning = ['dismantling', 'returning'].includes(activeMission.status);
+
+    const meEntry = missionEquipments.find(me => me.missionId === activeMission.id && me.equipmentId === eqToLoad.id);
+
+    if (!meEntry) {
+      setScanError(`Non prévu: ${eqToLoad.name}`);
+      setTimeout(() => setScanError(null), 2000);
+      return;
+    }
+
+    if (isReturning) {
+      if ((meEntry.returnedQuantity || 0) >= meEntry.loadedQuantity) {
+        setScanError(`Déjà retourné: ${eqToLoad.name}`);
+        setTimeout(() => setScanError(null), 2000);
+        return;
+      }
+    } else {
+      if (meEntry.loadedQuantity >= meEntry.plannedQuantity) {
+        setScanError(`Déjà chargé: ${eqToLoad.name}`);
+        setTimeout(() => setScanError(null), 2000);
+        return;
+      }
+    }
+
+    setScanResult(`Scanné: ${eqToLoad.name}`);
       
-      // Update DB
+    if (isReturning) {
       await dbMutations.updateMissionEquipment(activeMission.id, eqToLoad.id, {
-        loadedQuantity: missionQs[0].loadedQuantity + 1,
+        returnedQuantity: (meEntry.returnedQuantity || 0) + 1,
+        inScanTime: new Date().toISOString()
+      });
+    } else {
+      await dbMutations.updateMissionEquipment(activeMission.id, eqToLoad.id, {
+        loadedQuantity: meEntry.loadedQuantity + 1,
         outScanTime: new Date().toISOString()
       });
       
-      setTimeout(() => setScanResult(null), 2000);
+      if (activeMission.status === 'planned') {
+        await dbMutations.updateMissionStatus(activeMission.id, 'loading');
+        setActiveMission(prev => prev ? { ...prev, status: 'loading' } : null);
+      }
+    }
+    
+    setTimeout(() => setScanResult(null), 2000);
+  };
+
+  const handleScanSimulation = async () => {
+    if (!activeMission) {
+      const eq = equipment[0];
+      if (eq) handleRealScan(eq.qrCode);
+      return;
+    }
+    
+    const isReturning = ['dismantling', 'returning'].includes(activeMission.status);
+    
+    const missionQs = missionEquipments.filter(me => 
+      me.missionId === activeMission.id && 
+      (isReturning ? (me.returnedQuantity || 0) < me.loadedQuantity : me.loadedQuantity < me.plannedQuantity)
+    );
+    
+    if (missionQs.length > 0) {
+      const eqToLoad = equipment.find(e => e.id === missionQs[0].equipmentId);
+      if (eqToLoad) {
+        handleRealScan(eqToLoad.qrCode);
+      }
+    } else {
+      setScanError(isReturning ? "Tout le matériel a déjà été scanné pour le retour !" : "Tout le matériel a déjà été chargé !");
+      setTimeout(() => setScanError(null), 2000);
     }
   };
 
@@ -81,9 +148,15 @@ export function MobileView() {
     const missionEqList = missionEquipments.filter(me => me.missionId === activeMission.id);
     const totalPlanned = missionEqList.reduce((acc, me) => acc + me.plannedQuantity, 0);
     const totalLoaded = missionEqList.reduce((acc, me) => acc + me.loadedQuantity, 0);
-    const progress = totalPlanned === 0 ? 0 : Math.round((totalLoaded / totalPlanned) * 100);
+    const totalReturned = missionEqList.reduce((acc, me) => acc + (me.returnedQuantity || 0), 0);
+    
+    const isReturningPhase = ['dismantling', 'returning'].includes(activeMission.status);
+    const totalCurrent = isReturningPhase ? totalReturned : totalLoaded;
+    const totalTarget = isReturningPhase ? totalLoaded : totalPlanned;
 
-    const isLoadComplete = progress === 100;
+    const progress = totalTarget === 0 ? 0 : Math.round((totalCurrent / totalTarget) * 100);
+
+    const isLoadComplete = isReturningPhase ? totalCurrent >= totalTarget && totalTarget > 0 : progress === 100;
     
     const advanceStatus = async () => {
       const nextMap: Record<string, string> = {
@@ -106,61 +179,50 @@ export function MobileView() {
     
     // Determine the main action text based on status
     let actionElement = null;
-    if (activeMission.status === 'planned' || activeMission.status === 'loading') {
-      if (activeMission.status === 'planned') {
-        // Auto transition to loading on first load
-        dbMutations.updateMissionStatus(activeMission.id, 'loading');
-        setActiveMission(prev => ({ ...prev!, status: 'loading' }));
-      }
+    
+    const statusActionMap: Record<string, { label: string, icon: any, color: string }> = {
+      planned: { label: 'Départ Entrepôt (En route)', icon: Truck, color: 'bg-blue-600 hover:bg-blue-700' },
+      loading: { label: 'Départ Entrepôt (En route)', icon: Truck, color: 'bg-blue-600 hover:bg-blue-700' },
+      en_route: { label: 'Sur site (Début Montage)', icon: MapPin, color: 'bg-indigo-600 hover:bg-indigo-700' },
+      installing: { label: 'Montage Terminé (Live)', icon: Play, color: 'bg-green-600 hover:bg-green-700' },
+      live: { label: 'Fin de presta (Démontage)', icon: Hammer, color: 'bg-pink-600 hover:bg-pink-700' },
+      dismantling: { label: 'Camion chargé (Retour)', icon: Truck, color: 'bg-amber-600 hover:bg-amber-700' },
+      returning: { label: 'Retour Entrepôt (Terminer)', icon: CheckCircle2, color: 'bg-slate-800 hover:bg-slate-900' },
+    };
+
+    const config = statusActionMap[activeMission.status];
+    if (config) {
+      const isScanPhase = ['planned', 'loading', 'dismantling', 'returning'].includes(activeMission.status);
+      
       actionElement = (
         <div className="flex flex-col gap-3">
-          <button 
-            onClick={() => setIsScanning(true)}
-            className="w-full bg-[#1E293B] hover:bg-slate-800 text-white rounded-xl py-3.5 text-sm font-bold flex items-center justify-center gap-2 shadow-md uppercase tracking-wider"
-          >
-            <Camera className="w-5 h-5" />
-            Scanner un code QR
-          </button>
+          {isScanPhase && (
+            <button 
+              onClick={() => setIsScanning(true)}
+              className="w-full bg-[#1E293B] hover:bg-slate-800 text-white rounded-xl py-3.5 text-sm font-bold flex items-center justify-center gap-2 shadow-md uppercase tracking-wider"
+            >
+              <Camera className="w-5 h-5" />
+              {isReturningPhase ? 'Scanner (Retour)' : 'Scanner un code QR'}
+            </button>
+          )}
           
-          {isLoadComplete && (
+          {(!isScanPhase || isLoadComplete) && (
             <button 
               onClick={advanceStatus}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl py-3.5 text-sm font-bold flex items-center justify-center gap-2 shadow-md uppercase tracking-wider transition-colors"
+              className={cn("w-full text-white rounded-xl py-3.5 text-sm font-bold flex items-center justify-center gap-2 shadow-md uppercase tracking-wider transition-colors", config.color)}
             >
-              <Truck className="w-5 h-5" />
-              Départ Entrepôt (En route)
+              <config.icon className="w-5 h-5" />
+              {config.label}
             </button>
           )}
         </div>
       );
     } else {
-      // Mapping for other statuses
-      const statusActionMap: Record<string, { label: string, icon: any, color: string }> = {
-        en_route: { label: 'Sur site (Début Montage)', icon: MapPin, color: 'bg-indigo-600 hover:bg-indigo-700' },
-        installing: { label: 'Montage Terminé (Live)', icon: Play, color: 'bg-green-600 hover:bg-green-700' },
-        live: { label: 'Fin de presta (Démontage)', icon: Hammer, color: 'bg-pink-600 hover:bg-pink-700' },
-        dismantling: { label: 'Camion chargé (Retour)', icon: Truck, color: 'bg-amber-600 hover:bg-amber-700' },
-        returning: { label: 'Retour Entrepôt (Terminer)', icon: CheckCircle2, color: 'bg-slate-800 hover:bg-slate-900' },
-      };
-      
-      const config = statusActionMap[activeMission.status];
-      if (config) {
-        actionElement = (
-           <button 
-            onClick={advanceStatus}
-            className={cn("w-full text-white rounded-xl py-3.5 text-sm font-bold flex items-center justify-center gap-2 shadow-md uppercase tracking-wider transition-colors", config.color)}
-          >
-            <config.icon className="w-5 h-5" />
-            {config.label}
-          </button>
-        );
-      } else {
-        actionElement = (
-          <div className="w-full bg-green-100 text-green-800 rounded-xl py-3.5 text-sm font-bold text-center uppercase tracking-wider">
-            Mission Terminée
-          </div>
-        );
-      }
+      actionElement = (
+        <div className="w-full bg-green-100 text-green-800 rounded-xl py-3.5 text-sm font-bold text-center uppercase tracking-wider">
+          Mission Terminée
+        </div>
+      );
     }
 
     return (
@@ -180,8 +242,10 @@ export function MobileView() {
             
             <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex flex-col gap-3">
               <div className="flex justify-between items-end">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Progression Chargement</span>
-                <span className="text-sm font-bold text-blue-600">{totalLoaded} / {totalPlanned}</span>
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                  {isReturningPhase ? 'Progression Retour' : 'Progression Chargement'}
+                </span>
+                <span className="text-sm font-bold text-blue-600">{totalCurrent} / {totalTarget}</span>
               </div>
               <div className="h-2.5 bg-slate-200 rounded-full w-full overflow-hidden">
                 <div className="h-full bg-blue-500 transition-all duration-500" style={{ width: `${progress}%` }}></div>
@@ -199,7 +263,9 @@ export function MobileView() {
                {missionEqList.map(me => {
                  const eq = equipment.find(e => e.id === me.equipmentId);
                  if (!eq) return null;
-                 const isComplete = me.loadedQuantity >= me.plannedQuantity;
+                 const currentQuantity = isReturningPhase ? (me.returnedQuantity || 0) : me.loadedQuantity;
+                 const targetQuantity = isReturningPhase ? me.loadedQuantity : me.plannedQuantity;
+                 const isComplete = currentQuantity >= targetQuantity && targetQuantity > 0;
                  
                  return (
                    <div key={me.equipmentId} className={cn("p-3 rounded-xl border flex items-center justify-between transition-colors", isComplete ? "bg-green-50/50 border-green-100" : "bg-white border-slate-200 shadow-sm")}>
@@ -213,7 +279,7 @@ export function MobileView() {
                        </div>
                      </div>
                      <span className={cn("text-xs font-bold w-12 text-right", isComplete ? "text-green-600" : "text-slate-500")}>
-                       {me.loadedQuantity} / {me.plannedQuantity}
+                       {currentQuantity} / {targetQuantity}
                      </span>
                    </div>
                  )
@@ -229,52 +295,60 @@ export function MobileView() {
     );
   }
 
-  if (isScanning && activeMission) {
+  if (isScanning) {
     return (
       <div className="flex flex-col h-full bg-black max-w-md mx-auto w-full relative">
         <div className="absolute top-0 left-0 right-0 p-4 flex items-center justify-between z-20 bg-gradient-to-b from-black/80 to-transparent">
           <button onClick={() => setIsScanning(false)} className="p-2 text-white/70 hover:text-white rounded-full bg-black/40 backdrop-blur-md">
             <X className="w-6 h-6" />
           </button>
-          <div className="text-white text-xs font-bold tracking-widest uppercase">Scanner {activeMission.id}</div>
+          <div className="text-white text-xs font-bold tracking-widest uppercase">
+            {activeMission ? `Scanner ${activeMission.id}` : 'Scan Libre'}
+          </div>
           <div className="w-10"></div>
         </div>
 
-        {/* Fake Camera Viewfinder */}
-        <div className="flex-1 relative flex items-center justify-center">
+        {/* Real Camera Viewfinder */}
+        <div className="flex-1 relative flex items-center justify-center overflow-hidden">
            <div className="absolute inset-0 bg-slate-900" />
-           <div className="absolute inset-0 opacity-20" style={{ backgroundSize: '20px 20px', backgroundImage: 'linear-gradient(to right, #ffffff 1px, transparent 1px), linear-gradient(to bottom, #ffffff 1px, transparent 1px)' }} />
-           
-           <div className="relative z-10 w-64 h-64 border-2 border-white/20 rounded-2xl flex items-center justify-center">
-             <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-blue-500 rounded-tl-xl" />
-             <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-blue-500 rounded-tr-xl" />
-             <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-blue-500 rounded-bl-xl" />
-             <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-blue-500 rounded-br-xl" />
-             
-             <ScanLine className="w-full h-full text-blue-500/30 animate-pulse absolute inset-0" />
-             <div className="w-full h-0.5 bg-blue-500 absolute top-1/2 -translate-y-1/2 shadow-[0_0_15px_rgba(59,130,246,0.8)]" />
+           <div className="absolute inset-0 z-10 flex items-center justify-center">
+             <Scanner
+                onScan={(detectedCodes: IDetectedBarcode[]) => {
+                  if (scanResult || scanError) return;
+                  if (detectedCodes && detectedCodes.length > 0) {
+                    handleRealScan(detectedCodes[0].rawValue);
+                  }
+                }}
+                onError={(error: any) => {
+                  console.warn(error);
+                }}
+                components={{
+                  audio: false,
+                  finder: true,
+                }}
+             />
            </div>
 
            {scanResult && (
-             <div className="absolute bottom-32 bg-green-500 text-white px-6 py-3 rounded-full font-bold text-sm shadow-xl flex items-center gap-2 animate-in slide-in-from-bottom-5">
+             <div className="absolute bottom-32 bg-green-500 text-white px-6 py-3 rounded-full font-bold text-sm shadow-xl flex items-center gap-2 animate-in slide-in-from-bottom-5 z-30">
                <CheckCircle2 className="w-5 h-5" />
                {scanResult}
              </div>
            )}
            
            {scanError && (
-             <div className="absolute bottom-32 bg-red-500 text-white px-6 py-3 rounded-full font-bold text-sm shadow-xl flex items-center gap-2 animate-in slide-in-from-bottom-5">
+             <div className="absolute bottom-32 bg-red-500 text-white px-6 py-3 rounded-full font-bold text-sm shadow-xl flex items-center gap-2 animate-in slide-in-from-bottom-5 z-30">
                <AlertTriangle className="w-5 h-5" />
                {scanError}
              </div>
            )}
         </div>
 
-        <div className="p-8 bg-black z-20 shrink-0 mb-safe flex flex-col items-center">
-          <p className="text-white/50 text-xs text-center mb-6 font-medium">Cadrez le code QR dans la zone au-dessus.<br/>(Cliquez ci-dessous pour simuler un scan)</p>
+        <div className="p-8 bg-black z-20 shrink-0 mb-safe flex flex-col items-center relative">
+          <p className="text-white/50 text-xs text-center mb-6 font-medium z-30">Cadrez le code QR dans la zone au-dessus.<br/>(Cliquez ci-dessous pour simuler un scan)</p>
           <button 
-            onClick={() => handleScanSimulation(true)}
-            className="w-16 h-16 rounded-full bg-white/10 border-4 border-white flex items-center justify-center hover:bg-white/20 transition-colors focus:ring-4 focus:ring-blue-500/50 outline-none"
+            onClick={() => handleScanSimulation()}
+            className="w-16 h-16 rounded-full bg-white/10 border-4 border-white flex items-center justify-center hover:bg-white/20 transition-colors focus:ring-4 focus:ring-blue-500/50 outline-none z-30"
           />
         </div>
       </div>
@@ -349,7 +423,9 @@ export function MobileView() {
         <div className="mt-8">
            <h2 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 px-1">Actions Rapides</h2>
            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm flex flex-col items-center justify-center h-24 gap-2 text-center active:bg-slate-50 cursor-pointer">
+              <div 
+                onClick={() => setIsScanning(true)}
+                className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm flex flex-col items-center justify-center h-24 gap-2 text-center active:bg-slate-50 cursor-pointer">
                 <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 border border-blue-100 flex items-center justify-center mb-1">
                   <QrCode className="w-5 h-5" />
                 </div>
