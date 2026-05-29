@@ -322,10 +322,6 @@ export function MobileView() {
                 onError={(error: any) => {
                   console.warn(error);
                 }}
-                components={{
-                  audio: false,
-                  finder: true,
-                }}
              />
            </div>
 
